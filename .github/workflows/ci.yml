@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v2
+      - name: Use Golang
+        uses: actions/setup-go@v1
+        with:
+          go-version: 1.19
+      - name: git
+        run: git config --global url.https://${{ secrets.SELEFRA_TOKEN }}@github.com/.insteadOf https://github.com/
+      - run: |
+          # go run docs/doc_gen.go
+        env:
+          SELEFRA_DOC_OUTPUT_DIRECTORY: ./docs
+      - run: |
+          # ls -la ./docs
+          
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    services:
+      selefra_postgres:
+        image: postgres
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_PASSWORD: pass
+          POSTGRES_DB: test
+          POSTGRES_USER: postgres
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Use Golang
+        uses: actions/setup-go@v1
+        with:
+          go-version: 1.19
+      - name: test
+        env:
+          TZ: Asia/Shanghai
+          SELEFRA_DATABASE_DSN: "host=127.0.0.1 user=postgres password=pass port=5432 dbname=test sslmode=disable"
+        run: go test ./...

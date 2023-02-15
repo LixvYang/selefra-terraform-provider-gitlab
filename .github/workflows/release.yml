@@ -1,0 +1,61 @@
+name: RELEASE
+
+on:
+  release:
+    types: [ created, edited ]
+    
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v2
+      - id: release
+        run: |
+          TAG_NAME=${{ github.event.release.tag_name }}
+          ID=`echo ${TAG_NAME##v}`
+          echo "::set-output name=VERSION::$ID"
+
+      - name: Use Golang
+        uses: actions/setup-go@v1
+        with:
+          go-version: 1.19
+      - name: git
+        run: git config --global url.https://${{ secrets.SELEFRA_TOKEN }}@github.com/.insteadOf https://github.com/
+      - name: Run GoReleaser
+        if: "github.event.release.prerelease"
+        uses: goreleaser/goreleaser-action@v3
+        with:
+          version: latest
+          args: release --skip-publish --timeout 120m
+        env:
+          GITHUB_TOKEN: ${{ secrets.SELEFRA_TOKEN }}
+
+      - name: Release
+        if: "github.event.release.prerelease"
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/*checksums.txt
+            dist/*.tar.gz
+          prerelease: true
+          generate_release_notes: true
+          token: ${{ secrets.SELEFRA_TOKEN }}
+
+      - name: Run GoReleaser
+        if: "!github.event.release.prerelease"
+        uses: goreleaser/goreleaser-action@v3
+        with:
+          version: latest
+          args: release --rm-dist --timeout 120m
+        env:
+          GITHUB_TOKEN: ${{ secrets.SELEFRA_TOKEN }}
+
+      - name: registry
+        if: "!github.event.release.prerelease"
+        env:
+          SELEFRA_TOKEN: ${{ secrets.SELEFRA_TOKEN }}
+        run: |
+          cd /tmp/ && git clone https://${SELEFRA_TOKEN}@github.com/selefra/registry.git && cd registry/ && cp $GITHUB_WORKSPACE/.github/scripts/registry.sh . \
+          && cp $GITHUB_WORKSPACE/dist/selefra-provider-aws_*_checksums.txt . && bash registry.sh ${{ steps.release.outputs.version }} && cd provider/aws/ && git config --global user.name "bot" \
+          && git config --global user.email "bot@selefra.io" && git add . && git commit -m "update aws provider to ${{ steps.release.outputs.version }}" && git push
